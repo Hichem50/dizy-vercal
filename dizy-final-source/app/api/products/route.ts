@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     category_id = cat?.id ?? null;
   }
 
-  // MVP : auto-approuvé pour apparaître tout de suite. La modération admin viendra ensuite.
+  // Le produit attend la validation de l'admin avant d'apparaître dans le catalogue.
   const { data: prod, error } = await admin
     .from("products")
     .insert({
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
       price: Math.round(price),
       description,
       category_id,
-      status: "APPROVED",
+      status: "PENDING",
     })
     .select(PRODUCT_SELECT)
     .single();
