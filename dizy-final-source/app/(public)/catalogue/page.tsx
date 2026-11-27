@@ -1,11 +1,16 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLang } from "@/components/LangProvider";
-import { ProductCard } from "@/components/ProductCard";
+import { ProductCard, type CardProduct } from "@/components/ProductCard";
 import { CATS, PRODUCTS } from "@/lib/data";
 import { IC } from "@/lib/icons";
+
+function catIndexOf(key: string | null) {
+  const i = CATS.findIndex((c) => c.key === key);
+  return i < 0 ? 0 : i;
+}
 
 function CatalogueInner() {
   const { lang, t } = useLang();
@@ -13,10 +18,41 @@ function CatalogueInner() {
   const initCat = sp.get("cat");
   const [cat, setCat] = useState<number>(initCat !== null ? Number(initCat) : -1);
   const [q, setQ] = useState("");
+  const [real, setReal] = useState<CardProduct[] | null>(null);
 
-  const list = PRODUCTS.filter((p) => {
-    const name = (lang === "ar" ? p.ar : p.fr).toLowerCase();
-    return (cat < 0 || p.cat === cat) && name.includes(q.toLowerCase());
+  useEffect(() => {
+    let on = true;
+    fetch("/api/products")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!on) return;
+        const list: CardProduct[] = (d.products ?? []).map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          price: p.price,
+          catIndex: catIndexOf(p.catKey),
+          storeName: p.storeName,
+        }));
+        setReal(list);
+      })
+      .catch(() => setReal([]));
+    return () => {
+      on = false;
+    };
+  }, []);
+
+  const usingReal = real !== null && real.length > 0;
+  const sample: CardProduct[] = PRODUCTS.map((p) => ({
+    id: p.id,
+    title: lang === "ar" ? p.ar : p.fr,
+    price: p.price,
+    catIndex: p.cat,
+  }));
+  const source = usingReal ? (real as CardProduct[]) : sample;
+
+  const list = source.filter((p) => {
+    const name = p.title.toLowerCase();
+    return (cat < 0 || p.catIndex === cat) && name.includes(q.toLowerCase());
   });
 
   return (
@@ -38,7 +74,7 @@ function CatalogueInner() {
       </div>
       <div className="grid" style={{ marginTop: 16 }}>
         {list.length ? (
-          list.map((p) => <ProductCard key={p.id} id={p.id} />)
+          list.map((p) => <ProductCard key={p.id} product={p} />)
         ) : (
           <div style={{ gridColumn: "1/-1" }} className="empty">
             <svg className="i" viewBox="0 0 24 24"><path d={IC.box} /></svg>
@@ -46,7 +82,7 @@ function CatalogueInner() {
           </div>
         )}
       </div>
-      <p className="note" style={{ marginTop: 10 }}>{t.sample}</p>
+      {!usingReal ? <p className="note" style={{ marginTop: 10 }}>{t.sample}</p> : null}
     </>
   );
 }

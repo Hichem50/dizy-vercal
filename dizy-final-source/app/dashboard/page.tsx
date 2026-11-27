@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLang } from "@/components/LangProvider";
 import { DASH } from "@/lib/i18n/dash";
 import { Logo } from "@/components/Logo";
 import { IC } from "@/lib/icons";
+import { CATS } from "@/lib/data";
+
+type DProd = { id: string; title: string; catIndex: number; price: number; status: string };
+const catIndexOf = (key: string | null) => {
+  const i = CATS.findIndex((c) => c.key === key);
+  return i < 0 ? 0 : i;
+};
 
 const PAGES = ["overview", "products", "orders", "customers", "earnings", "analytics", "reviews", "store"];
 const ICN = ["grid", "box", "cart", "user", "wallet", "clock", "star", "store"];
@@ -23,7 +30,29 @@ export default function Dashboard() {
 
   const [page, setPage] = useState("overview");
   const [adding, setAdding] = useState(false);
-  const [prods, setProds] = useState<{ n: string; c: number; p: number }[]>([]);
+  const [prods, setProds] = useState<DProd[]>([]);
+
+  // Charge les produits réels de la boutique du vendeur.
+  useEffect(() => {
+    let on = true;
+    fetch("/api/products?mine=1")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!on) return;
+        const list: DProd[] = (d.products ?? []).map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          catIndex: catIndexOf(p.catKey),
+          price: p.price,
+          status: p.status,
+        }));
+        setProds(list);
+      })
+      .catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, []);
   const [sub, setSub] = useState<Sub>("none");
   const [exp, setExp] = useState(0);
   const [rnp, setRnp] = useState(false);
@@ -134,9 +163,30 @@ export default function Dashboard() {
         if (adding)
           return (<>
             <Head title={t.nav[1]} />
-            <form className="card dform" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); setProds((x) => [{ n: String(f.get("n")), c: Number(f.get("c")), p: Number(f.get("p")) }, ...x]); setAdding(false); flash(t.pOk); }}>
+            <form className="card dform" onSubmit={async (e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              const title = String(f.get("n") || "").trim();
+              const categoryKey = String(f.get("c") || "");
+              const price = Number(f.get("p"));
+              const description = String(f.get("d") || "");
+              const res = await fetch("/api/products", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title, categoryKey, price, description }),
+              });
+              const d = await res.json().catch(() => null);
+              if (res.ok && d?.product) {
+                const p = d.product;
+                setProds((x) => [{ id: p.id, title: p.title, catIndex: catIndexOf(p.catKey), price: p.price, status: p.status }, ...x]);
+                setAdding(false);
+                flash(t.pOk);
+              } else {
+                flash(d?.error ? String(d.error).slice(0, 90) : "Erreur");
+              }
+            }}>
               <label className="full">{t.pName}<input name="n" required maxLength={120} /></label>
-              <label>{t.pCat}<select name="c">{["Modèles", "E-books", "Icônes", "Polices", "Kits UI", "Audio", "Cours"].map((c, i) => <option key={i} value={i}>{c}</option>)}</select></label>
+              <label>{t.pCat}<select name="c">{CATS.map((c) => <option key={c.key} value={c.key}>{lang === "ar" ? c.ar : c.fr}</option>)}</select></label>
               <label>{t.pPrice}<input name="p" type="number" min="0" required inputMode="numeric" /></label>
               <label className="full">{t.pDesc}<textarea name="d" style={{ minHeight: 100 }} /></label>
               <label className="full">{t.pFile}<span className="drop"><input type="file" name="f" /><small>{I("lock")} {t.pFileH}</small></span></label>
@@ -148,7 +198,7 @@ export default function Dashboard() {
           <div className="card">
             {prods.length ? (
               <div className="tw"><table><thead><tr>{t.colP.map((c) => <th key={c}>{c}</th>)}</tr></thead><tbody>
-                {prods.map((p, i) => <tr key={i}><td>{p.n}</td><td>{["Modèles", "E-books", "Icônes", "Polices", "Kits UI", "Audio", "Cours"][p.c]}</td><td className="n">{money(p.p)}</td><td><span className="chip wa">{t.pending}</span></td></tr>)}
+                {prods.map((p) => <tr key={p.id}><td>{p.title}</td><td>{CATS[p.catIndex] ? (lang === "ar" ? CATS[p.catIndex].ar : CATS[p.catIndex].fr) : "—"}</td><td className="n">{money(p.price)}</td><td><span className={"chip " + (p.status === "APPROVED" ? "ok" : p.status === "REJECTED" ? "er" : "wa")}>{p.status === "APPROVED" ? (lang === "ar" ? "منشور" : "Publié") : p.status === "REJECTED" ? (lang === "ar" ? "مرفوض" : "Refusé") : t.pending}</span></td></tr>)}
               </tbody></table></div>
             ) : <Empty h={t.noProd} p={t.noProdT} />}
           </div>
