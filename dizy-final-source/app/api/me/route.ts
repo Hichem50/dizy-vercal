@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { envError, serverError } from "@/lib/server/http";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ user: null }, { status: 401 });
+  const envErr = envError();
+  if (envErr) return envErr;
+  try {
+    const user = await getCurrentUser();
+    return NextResponse.json({ user: user ?? null });
+  } catch (e) {
+    return serverError(e);
   }
-  return NextResponse.json({
-    user: {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-    },
-  });
 }

@@ -6,8 +6,23 @@ import { useRouter } from "next/navigation";
 import { useLang } from "@/components/LangProvider";
 import { routeForRole } from "@/lib/auth/redirect";
 
+function msgFor(lang: string, code: string | undefined, serverMsg: string | undefined, fallback: string) {
+  const ar = lang === "ar";
+  if (code === "SERVER_NOT_CONFIGURED")
+    return ar
+      ? "الخادم غير مهيّأ: مفاتيح Supabase ناقصة في Vercel. أضف المتغيّرات وأعد النشر."
+      : "Serveur non configuré : variables Supabase manquantes sur Vercel.";
+  if (code === "DB_WRITE_FAILED")
+    return (ar ? "فشل الحفظ في قاعدة البيانات: " : "Échec d'écriture en base : ") + (serverMsg ?? "");
+  if (code === "SIGNUP_FAILED")
+    return (ar ? "تعذّر إنشاء الحساب: " : "Création impossible : ") + (serverMsg ?? fallback);
+  if (code === "SERVER_ERROR")
+    return (ar ? "خطأ في الخادم: " : "Erreur serveur : ") + (serverMsg ?? "");
+  return serverMsg ? `${fallback} (${serverMsg})` : fallback;
+}
+
 export default function RegisterPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const router = useRouter();
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -17,23 +32,32 @@ export default function RegisterPage() {
     e.preventDefault();
     setErr(""); setMsg(""); setBusy(true);
     const f = new FormData(e.currentTarget);
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fullName: f.get("fullName"),
-        email: f.get("email"),
-        password: f.get("password"),
-        phone: f.get("phone"),
-        accountType: f.get("accountType"),
-      }),
-    });
-    const d = await res.json();
-    setBusy(false);
-    if (!res.ok) { setErr(d.error ? `${t.regFail} (${d.error})` : t.regFail); return; }
-    if (d.needsEmailConfirmation) { setMsg(t.needConfirm); return; }
-    router.push(routeForRole(d.role));
-    router.refresh();
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: f.get("fullName"),
+          email: f.get("email"),
+          password: f.get("password"),
+          phone: f.get("phone"),
+          accountType: f.get("accountType"),
+        }),
+      });
+      let d: any = null;
+      try { d = await res.json(); } catch {}
+      setBusy(false);
+      if (!res.ok) {
+        setErr(msgFor(lang, d?.error, d?.message, t.regFail));
+        return;
+      }
+      if (d.needsEmailConfirmation) { setMsg(t.needConfirm); return; }
+      router.push(routeForRole(d.role));
+      router.refresh();
+    } catch {
+      setBusy(false);
+      setErr(lang === "ar" ? "تعذّر الاتصال بالخادم. حاول مجدداً." : "Connexion au serveur impossible. Réessayez.");
+    }
   }
 
   return (
