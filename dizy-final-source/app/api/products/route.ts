@@ -62,6 +62,7 @@ export async function POST(req: Request) {
     const price = Number(body?.price);
     const categoryKey = body?.categoryKey ? String(body.categoryKey) : null;
     const description = body?.description ? String(body.description).trim() : null;
+    const fileUrl = body?.fileUrl ? String(body.fileUrl).trim() : null;
 
     if (!title || title.length > 120 || !Number.isFinite(price) || price < 0) {
       return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
@@ -110,6 +111,7 @@ export async function POST(req: Request) {
         price: Math.round(price),
         description,
         category_id,
+        file_path: fileUrl,
         status: "PENDING",
       })
       .select(PRODUCT_SELECT)

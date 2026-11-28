@@ -17,7 +17,7 @@ function CatalogueInner() {
   const sp = useSearchParams();
   const initCat = sp.get("cat");
   const [cat, setCat] = useState<number>(initCat !== null ? Number(initCat) : -1);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(sp.get("q") ?? "");
   const [real, setReal] = useState<CardProduct[] | null>(null);
 
   useEffect(() => {

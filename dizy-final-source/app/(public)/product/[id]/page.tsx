@@ -21,6 +21,9 @@ export default function ProductPage() {
   const { id } = useParams<{ id: string }>();
   const { lang, t, money } = useLang();
   const { items, add } = useCart();
+  const [buying, setBuying] = useState(false);
+  const [omsg, setOmsg] = useState("");
+  const [oerr, setOerr] = useState("");
 
   const mock = PRODUCTS.find((x) => x.id === id);
   const [state, setState] = useState<"loading" | "notfound" | CardProduct | null>(mock ? null : "loading");
@@ -90,6 +93,42 @@ export default function ProductPage() {
               <svg className="i" viewBox="0 0 24 24"><path d={IC.cart} /></svg>{t.add}
             </button>
           )}
+          {!buying ? (
+            <button className="btn" onClick={() => { setBuying(true); setOmsg(""); setOerr(""); }}>
+              {lang === "ar" ? "اشترِ الآن" : "Acheter maintenant"}
+            </button>
+          ) : (
+            <form className="col" onSubmit={async (e) => {
+              e.preventDefault();
+              setOerr(""); setOmsg("");
+              const f = new FormData(e.currentTarget);
+              const res = await fetch("/api/orders", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ productId: view!.id, method: f.get("method"), reference: f.get("ref") }),
+              });
+              const d = await res.json().catch(() => null);
+              if (res.ok) { setBuying(false); setOmsg(lang === "ar" ? "تم إرسال طلبك — في انتظار تأكيد الإدارة، ثم يظهر رابط التحميل في مكتبتك." : "Commande envoyée — en attente de confirmation ; le lien de téléchargement apparaîtra dans votre bibliothèque."); }
+              else if (res.status === 401) { setOerr(lang === "ar" ? "سجّل الدخول أولاً للشراء." : "Connectez-vous pour acheter."); }
+              else { setOerr(d?.message || d?.error || "Erreur"); }
+            }}>
+              <label>{lang === "ar" ? "طريقة الدفع" : "Méthode de paiement"}
+                <select name="method" required defaultValue="CCP">
+                  <option value="CCP">CCP</option>
+                  <option value="BARIDIMOB">BaridiMob</option>
+                  <option value="RIP">RIP</option>
+                  <option value="REDOTPAY">RedotPay</option>
+                </select>
+              </label>
+              <label>{lang === "ar" ? "مرجع الدفع" : "Référence du paiement"}<input name="ref" required /></label>
+              <div className="row" style={{ justifyContent: "flex-start", gap: 8 }}>
+                <button className="btn" type="submit">{lang === "ar" ? "تأكيد الطلب" : "Confirmer la commande"}</button>
+                <button className="btn o" type="button" onClick={() => setBuying(false)}>{lang === "ar" ? "إلغاء" : "Annuler"}</button>
+              </div>
+            </form>
+          )}
+          {omsg ? <p className="ok">{omsg}</p> : null}
+          {oerr ? <p className="err">{oerr}</p> : null}
           <p className="k" style={{ margin: 0, display: "flex", gap: 8 }}>
             <svg className="i" viewBox="0 0 24 24"><path d={IC.shield} /></svg>{t.secure}
           </p>

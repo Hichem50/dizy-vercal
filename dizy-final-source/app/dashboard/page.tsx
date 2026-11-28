@@ -19,6 +19,14 @@ const PAGES = ["overview", "products", "orders", "customers", "earnings", "analy
 const ICN = ["grid", "box", "cart", "user", "wallet", "clock", "star", "store"];
 const LOCK = ["products", "orders", "customers", "earnings", "analytics", "reviews"];
 
+const SUBMETHODS: { v: string; fr: string; ar: string }[] = [
+  { v: "RIP", fr: "RIP (virement bancaire)", ar: "RIP (تحويل بنكي)" },
+  { v: "BARIDIMOB", fr: "BaridiMob", ar: "بريدي موب" },
+  { v: "CCP", fr: "CCP", ar: "CCP" },
+  { v: "REDOTPAY", fr: "RedotPay", ar: "RedotPay" },
+];
+const mapSubStatus = (s: string): Sub => (s === "ACTIVE" ? "active" : s === "PENDING" ? "pending" : "none");
+
 type Sub = "none" | "pending" | "active" | "expiring";
 const I = (k: string) => <svg className="i" viewBox="0 0 24 24"><path d={IC[k]} /></svg>;
 
@@ -58,6 +66,20 @@ export default function Dashboard() {
   const [rnp, setRnp] = useState(false);
   const [store, setStore] = useState({ name: "Dizy Store", user: "dizy", desc: "", m: 0, acct: "1234" });
   const [toast, setToast] = useState("");
+
+  // Charge l'état réel de l'abonnement (verrouille/déverrouille l'espace vendeur).
+  useEffect(() => {
+    let on = true;
+    fetch("/api/subscription")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!on) return;
+        if (d?.status) setSub(mapSubStatus(d.status));
+        if (d?.expiresAt) setExp(new Date(d.expiresAt).getTime());
+      })
+      .catch(() => {});
+    return () => { on = false; };
+  }, []);
 
   const live = sub === "active" || sub === "expiring";
   const days = () => Math.max(0, Math.ceil((exp - Date.now()) / 864e5));
@@ -170,10 +192,11 @@ export default function Dashboard() {
               const categoryKey = String(f.get("c") || "");
               const price = Number(f.get("p"));
               const description = String(f.get("d") || "");
+              const fileUrl = String(f.get("file") || "").trim();
               const res = await fetch("/api/products", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title, categoryKey, price, description }),
+                body: JSON.stringify({ title, categoryKey, price, description, fileUrl }),
               });
               const d = await res.json().catch(() => null);
               if (res.ok && d?.product) {
@@ -189,7 +212,7 @@ export default function Dashboard() {
               <label>{t.pCat}<select name="c">{CATS.map((c) => <option key={c.key} value={c.key}>{lang === "ar" ? c.ar : c.fr}</option>)}</select></label>
               <label>{t.pPrice}<input name="p" type="number" min="0" required inputMode="numeric" /></label>
               <label className="full">{t.pDesc}<textarea name="d" style={{ minHeight: 100 }} /></label>
-              <label className="full">{t.pFile}<span className="drop"><input type="file" name="f" /><small>{I("lock")} {t.pFileH}</small></span></label>
+              <label className="full">{lang === "ar" ? "رابط ملف المنتج (يُسلَّم للمشتري بعد تأكيد الدفع)" : "Lien du fichier produit (livré à l'acheteur après paiement)"}<input name="file" type="url" placeholder="https://…" dir="ltr" /></label>
               <div className="full row" style={{ justifyContent: "flex-start" }}><button className="btn" type="submit">{t.submit}</button><button className="btn o" type="button" onClick={() => setAdding(false)}>{t.cancel}</button></div>
             </form>
           </>);
@@ -244,15 +267,33 @@ export default function Dashboard() {
       </div>
     );
     const ren = live;
-    if (sub === "pending" || (ren && rnp))
-      return <><Head title={ren ? t.renewTitle : t.activate} />
+    if (sub === "pending")
+      return <><Head title={t.activate} />
         <div className="two">{info}<div className="card"><b>{t.pendingPay}</b><span className="k">{t.pendingPayD}</span>
-          <button className="btn o" style={{ alignSelf: "flex-start" }} onClick={() => { setExp(Date.now() + 365 * 864e5); setSub("active"); setRnp(false); flash(t.activated); setPage("overview"); }}>{t.demoConfirm}</button>
+          <span className="chip wa">{lang === "ar" ? "في انتظار تأكيد الإدارة" : "En attente de confirmation de l'administration"}</span>
         </div></div></>;
     return <><Head title={ren ? t.renewTitle : t.activate} sub={ren ? t.exp + " " + fdate(exp) : undefined} />
       <div className="two">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>{info}{payPanel}</div>
-        <form className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }} onSubmit={(e) => { e.preventDefault(); if (live) setRnp(true); else setSub("pending"); flash(t.sentReceipt); setPage("overview"); }}>
+        <form className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }} onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const method = String(f.get("method") || "");
+          const reference = String(f.get("r") || "").trim();
+          const res = await fetch("/api/subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ method, reference }),
+          });
+          const d = await res.json().catch(() => null);
+          if (res.ok) { setSub("pending"); flash(t.sentReceipt); setPage("overview"); }
+          else { flash(d?.message || d?.error || "Erreur"); }
+        }}>
+          <label>{lang === "ar" ? "طريقة الدفع" : "Méthode de paiement"}
+            <select name="method" required defaultValue="RIP">
+              {SUBMETHODS.map((m) => <option key={m.v} value={m.v}>{lang === "ar" ? m.ar : m.fr}</option>)}
+            </select>
+          </label>
           <label>{t.ref}<input name="r" required /></label>
           <label>{t.receipt}<input type="file" accept="image/*" /></label>
           <button className="btn" type="submit">{t.payBtn}</button>
