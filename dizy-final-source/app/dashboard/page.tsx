@@ -66,6 +66,15 @@ export default function Dashboard() {
   const [rnp, setRnp] = useState(false);
   const [store, setStore] = useState({ name: "Dizy Store", user: "dizy", desc: "", m: 0, acct: "1234" });
   const [toast, setToast] = useState("");
+  const [me, setMe] = useState<{ fullName: string | null; email: string } | null>(null);
+
+  // Charge les informations du vendeur connecté (nom, e-mail).
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((d) => { if (d?.user) setMe({ fullName: d.user.fullName, email: d.user.email }); })
+      .catch(() => {});
+  }, []);
 
   // Charge l'état réel de l'abonnement (verrouille/déverrouille l'espace vendeur).
   useEffect(() => {
@@ -168,7 +177,7 @@ export default function Dashboard() {
     switch (page) {
       case "overview":
         return (<>
-          <Head title={t.hi + ", Ada"} sub={t.hs} btn={live ? addBtn : undefined} />
+          <Head title={t.hi + (me ? ", " + (me.fullName || me.email.split("@")[0]) : "")} sub={me?.email || t.hs} btn={live ? addBtn : undefined} />
           <section className="g4">
             <StatCard k={t.s1} v="0" u={cur} /><StatCard k={t.s2} v="0" /><StatCard k={t.s3} v="0" /><StatCard k={t.s4} v="0 %" />
           </section>
@@ -305,6 +314,15 @@ export default function Dashboard() {
     <div className="app">
       <aside className="sb">
         <Link className="brand" href="/" style={{ padding: "0 6px" }}><Logo /><span><b>Dizy<em>.</em></b></span></Link>
+        {me ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px", border: "1px solid var(--bd)", borderRadius: 12 }}>
+            <span style={{ width: 34, height: 34, flex: "none", borderRadius: "50%", background: "var(--tint)", color: "var(--pk)", display: "grid", placeItems: "center", fontWeight: 700 }}>{(me.fullName || me.email)[0]?.toUpperCase()}</span>
+            <span style={{ minWidth: 0 }}>
+              <b style={{ fontSize: 13, display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{me.fullName || me.email.split("@")[0]}</b>
+              <span className="k" dir="ltr" style={{ fontSize: 11, display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{me.email}</span>
+            </span>
+          </div>
+        ) : null}
         <nav>
           {PAGES.map((p, i) => (
             <button key={p} aria-current={page === p ? "page" : undefined} onClick={() => { setPage(p); if (p !== "products") setAdding(false); }}>
