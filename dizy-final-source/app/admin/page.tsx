@@ -9,7 +9,7 @@ import { IC } from "@/lib/icons";
 const A = {
   fr: {
     title: "Administration", sub: "Validation des boutiques, produits et paiements.",
-    tabs: ["Boutiques", "Produits", "Paiements", "Commandes", "Réglages"],
+    tabs: ["Boutiques", "Produits", "Paiements", "Commandes", "Utilisateurs", "Réglages"],
     pendingStores: "Boutiques en attente", pendingProducts: "Produits en attente", pendingPay: "Paiements à confirmer",
     none: "Rien en attente pour le moment.", settings: "Comptes de réception et prix",
     priceLbl: "Prix de l'abonnement annuel (DZD)", save: "Enregistrer", saved: "Réglages enregistrés.",
@@ -20,6 +20,9 @@ const A = {
     confirmPay: "Confirmer", payConfirmed: "Paiement confirmé — abonnement activé.", payRejected: "Paiement refusé.",
     pendingOrders: "Commandes à confirmer", cBuyer: "Acheteur",
     orderConfirmed: "Commande confirmée — téléchargement débloqué.", orderRejected: "Commande annulée.",
+    usersTitle: "Utilisateurs inscrits", usersEmpty: "Aucun utilisateur pour le moment.",
+    cName: "Nom", cEmail: "E-mail", cRole: "Rôle", cJoined: "Inscrit le",
+    roleBuyer: "Acheteur", roleSeller: "Vendeur", roleAdmin: "Admin",
     loading: "Chargement…", logout: "Déconnexion",
     loginTitle: "Espace administrateur", loginSub: "Entrez le mot de passe administrateur.",
     pass: "Mot de passe", enter: "Entrer", badPass: "Mot de passe incorrect.",
@@ -27,7 +30,7 @@ const A = {
   },
   ar: {
     title: "لوحة الإدارة", sub: "مراجعة المتاجر والمنتجات والمدفوعات.",
-    tabs: ["المتاجر", "المنتجات", "المدفوعات", "الطلبات", "الإعدادات"],
+    tabs: ["المتاجر", "المنتجات", "المدفوعات", "الطلبات", "المستخدمون", "الإعدادات"],
     pendingStores: "متاجر قيد المراجعة", pendingProducts: "منتجات قيد المراجعة", pendingPay: "مدفوعات للتأكيد",
     none: "لا شيء قيد الانتظار حاليًا.", settings: "حسابات الاستلام والسعر",
     priceLbl: "سعر الاشتراك السنوي (د.ج)", save: "حفظ", saved: "تم حفظ الإعدادات.",
@@ -38,6 +41,9 @@ const A = {
     confirmPay: "تأكيد الدفع", payConfirmed: "تم تأكيد الدفع — فُعّل الاشتراك.", payRejected: "تم رفض الدفع.",
     pendingOrders: "طلبات للتأكيد", cBuyer: "المشتري",
     orderConfirmed: "تم تأكيد الطلب — فُتح التحميل للمشتري.", orderRejected: "تم إلغاء الطلب.",
+    usersTitle: "المستخدمون المسجّلون", usersEmpty: "لا مستخدمين حاليًا.",
+    cName: "الاسم", cEmail: "البريد", cRole: "الدور", cJoined: "تاريخ التسجيل",
+    roleBuyer: "مشترٍ", roleSeller: "بائع", roleAdmin: "مشرف",
     loading: "جارٍ التحميل…", logout: "خروج",
     loginTitle: "فضاء الإدارة", loginSub: "أدخل كلمة سرّ المشرف.",
     pass: "كلمة السرّ", enter: "دخول", badPass: "كلمة السرّ غير صحيحة.",
@@ -48,6 +54,7 @@ const A = {
 type P = { id: string; title: string; price: number; storeName: string | null };
 type Pay = { id: string; method: string; reference: string; amount: number; storeName: string | null };
 type Ord = { id: string; title: string | null; buyerEmail: string | null; method: string; reference: string; amount: number };
+type Usr = { id: string; email: string; fullName: string | null; role: string; createdAt: string };
 
 export default function Admin() {
   const { lang, setLang, money } = useLang();
@@ -65,6 +72,8 @@ export default function Admin() {
   const [payStatus, setPayStatus] = useState<"idle" | "loading" | "ok">("idle");
   const [ords, setOrds] = useState<Ord[]>([]);
   const [ordStatus, setOrdStatus] = useState<"idle" | "loading" | "ok">("idle");
+  const [usrs, setUsrs] = useState<Usr[]>([]);
+  const [usrStatus, setUsrStatus] = useState<"idle" | "loading" | "ok">("idle");
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(""), 2400); };
   const I = (k: string) => <svg className="i" viewBox="0 0 24 24"><path d={IC[k]} /></svg>;
 
@@ -108,9 +117,21 @@ export default function Admin() {
       .catch(() => setOrdStatus("ok"));
   }, []);
 
+  const loadUsers = useCallback(() => {
+    setUsrStatus("loading");
+    fetch("/api/admin/users")
+      .then((r) => (r.ok ? r.json() : { users: [] }))
+      .then((d) => {
+        setUsrs((d.users ?? []).map((u: any) => ({ id: u.id, email: u.email, fullName: u.fullName, role: u.role, createdAt: u.createdAt })));
+        setUsrStatus("ok");
+      })
+      .catch(() => setUsrStatus("ok"));
+  }, []);
+
   useEffect(() => { if (authed && tab === 1) load(); }, [authed, tab, load]);
   useEffect(() => { if (authed && tab === 2) loadPayments(); }, [authed, tab, loadPayments]);
   useEffect(() => { if (authed && tab === 3) loadOrders(); }, [authed, tab, loadOrders]);
+  useEffect(() => { if (authed && tab === 4) loadUsers(); }, [authed, tab, loadUsers]);
 
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -276,6 +297,30 @@ export default function Admin() {
     );
   }
 
+  function UsersTab() {
+    if (usrStatus === "loading") return <div className="card"><div className="empty">{I("clock")}<b>{t.loading}</b></div></div>;
+    if (usrs.length === 0) return <div className="card"><div className="empty">{I("user")}<b>{t.usersTitle}</b><span>{t.usersEmpty}</span></div></div>;
+    const roleLabel = (r: string) => (r === "SELLER" ? t.roleSeller : r === "ADMIN" ? t.roleAdmin : t.roleBuyer);
+    const fmt = (d: string) => { try { return new Date(d).toLocaleDateString(lang === "ar" ? "ar-DZ-u-nu-latn" : "fr-FR", { day: "numeric", month: "short", year: "numeric" }); } catch { return "—"; } };
+    return (
+      <div className="card">
+        <div className="tw"><table>
+          <thead><tr><th>{t.cName}</th><th>{t.cEmail}</th><th>{t.cRole}</th><th>{t.cJoined}</th></tr></thead>
+          <tbody>
+            {usrs.map((u) => (
+              <tr key={u.id}>
+                <td>{u.fullName || "—"}</td>
+                <td dir="ltr">{u.email}</td>
+                <td><span className={"chip " + (u.role === "ADMIN" ? "er" : u.role === "SELLER" ? "ok" : "mu")}>{roleLabel(u.role)}</span></td>
+                <td className="k">{fmt(u.createdAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+    );
+  }
+
   // ----- Panneau admin (connecté) -----
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px" }}>
@@ -296,7 +341,8 @@ export default function Admin() {
       {tab === 1 && <ProductsTab />}
       {tab === 2 && <PaymentsTab />}
       {tab === 3 && <OrdersTab />}
-      {tab === 4 && (
+      {tab === 4 && <UsersTab />}
+      {tab === 5 && (
         <form className="card col" style={{ maxWidth: 640 }} onSubmit={(e) => { e.preventDefault(); flash(t.saved); }}>
           <h2 style={{ fontSize: 17 }}>{t.settings}</h2>
           <label>{t.priceLbl}<input name="price" type="number" defaultValue={4000} inputMode="numeric" /></label>
